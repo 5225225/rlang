@@ -100,6 +100,9 @@ pub enum Instruction {
     Branch,
     BranchTrue,
 
+    Call,
+    Ret,
+
     PushSlot1,
     PushSlot2,
     PushSlot3,
@@ -136,6 +139,7 @@ pub enum HaltReason {
 pub struct Process {
     ip: usize,
     stack: Vec<Object>,
+    callstack: Vec<usize>,
     code: Vec<Instruction>,
     scratch: [Option<Object>; 4]
 }
@@ -160,6 +164,7 @@ impl Process {
         Process {
             ip: 0,
             stack: Vec::new(),
+            callstack: Vec::new(),
             code: code,
             scratch: [None;4]
         }
@@ -213,10 +218,13 @@ impl Process {
     fn __run_once(&mut self) -> Result<(), HaltReason> {
         use Instruction::*;
 
+
         let instruction = *match self.code.get(self.ip) {
             Some(x) => x,
             None => return Err(HaltReason::OutOfBounds),
         };
+
+        println!("{}: {:?}: {:?}: {:?}", self.ip, instruction, self.stack, self.scratch);
 
         match instruction {
             LiteralUnsigned(x) => self.stack.push(Object::Unsigned(x)),
@@ -371,6 +379,21 @@ impl Process {
                     self.ip = x as usize;
                     return Ok(());
                 }
+            }
+            Call => {
+                self.callstack.push(self.ip);
+                let x = self.pop_as::<u64>()?;
+                self.ip = x as usize;
+                return Ok(());
+            }
+            Ret => {
+                let ip = match self.callstack.pop() {
+                    Some(ip) => ip,
+                    None => return Err(HaltReason::StackUnderflow),
+                };
+
+                self.ip = ip;
+                // Don't return here, we want to increment the instruction pointer.
             }
             PushSlot1 => {
                 self.scratch[0] = Some(self.pop()?);
