@@ -120,6 +120,8 @@ pub enum Instruction {
     PopSlot2,
     PopSlot3,
     PopSlot4,
+
+    Intrinsic,
 }
 
 struct StackUnderflow{}
@@ -143,15 +145,17 @@ pub enum HaltReason {
     EmptyScratch,
     #[fail(display = "Type error")]
     TypeError,
+    #[fail(display = "Invalid Intrinsic")]
+    InvalidIntrinsic,
 }
 
-#[derive(Debug, PartialEq, Eq)]
 pub struct Process<'a> {
     ip: usize,
     stack: Vec<Object, U32>,
     callstack: Vec<usize, U32>,
     code: &'a [Instruction],
-    scratch: [Option<Object>; 4]
+    scratch: [Option<Object>; 4],
+    intrinsics: &'a [fn(&mut Process)]
 }
 
 impl From<StackUnderflow> for HaltReason {
@@ -170,12 +174,24 @@ impl From<PopFail> for HaltReason {
 }
 
 impl<'a> Process<'a> {
-    pub fn new(code: &'a [Instruction]) -> Process {
+    pub fn new(code: &'a [Instruction]) -> Process<'a> {
         Process {
             ip: 0,
             stack: Vec::new(),
             callstack: Vec::new(),
             code: code,
+            intrinsics: &[],
+            scratch: [None;4]
+        }
+    }
+
+    pub fn new_with_intrinsics(code: &'a [Instruction], intrinsics: &'a [fn(&mut Process)]) -> Process<'a> {
+        Process {
+            ip: 0,
+            stack: Vec::new(),
+            callstack: Vec::new(),
+            code: code,
+            intrinsics: intrinsics,
             scratch: [None;4]
         }
     }
@@ -195,6 +211,28 @@ impl<'a> Process<'a> {
         match self.stack.pop() {
             None => Err(StackUnderflow{}),
             Some(x) => Ok(x),
+        }
+    }
+
+    pub fn pub_pop_as<T>(&mut self) -> Option<T>
+        where T: core::convert::TryFrom<Object> {
+        match self.stack.pop() {
+            None => None,
+            Some(x) => {
+                let x: Result<T, _> = x.try_into();
+
+                match x {
+                    Ok(x) => Some(x),
+                    Err(_) => None,
+                }
+            }
+        }
+    }
+
+    pub fn pub_push(&mut self, value: Object) -> bool {
+        match self.stack.push(value) {
+            Ok(()) => true,
+            Err(val) => false
         }
     }
 
@@ -574,6 +612,15 @@ impl<'a> Process<'a> {
                     Ok(()) => {},
                     Err(_) => return Err(HaltReason::StackOverflow),
                 };
+            }
+            Intrinsic => {
+                let idx = self.pop_as::<u64>()?;
+                let func = match self.intrinsics.get(idx as usize) {
+                    Some(f) => f,
+                    None => return Err(HaltReason::InvalidIntrinsic),
+                };
+
+                func(self);
             }
         }
         self.ip += 1;

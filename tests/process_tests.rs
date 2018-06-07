@@ -240,6 +240,56 @@ fn calling_incrementer() {
 }
 
 #[test]
+#[should_panic(expected = "Called expected_panic from intrinsic")]
+fn simple_intrinsic() {
+
+    fn expected_panic(proc: &mut rlang::Process) {
+        panic!("Called expected_panic from intrinsic")
+    }
+
+    let ins = vec![
+        Instruction::LiteralUnsigned(0),
+        Instruction::Intrinsic,
+    ];
+
+    let intrinsics: &[fn(&mut Process)] = &[
+        expected_panic
+    ];
+
+    let mut x = Process::new_with_intrinsics(&ins, &intrinsics[..]);
+
+    let ret = x.run(64);
+
+    assert!(false);
+}
+
+#[test]
+fn intrinsic_mutation() {
+    fn triple_top(proc: &mut rlang::Process) {
+        let top = proc.pub_pop_as::<u64>().unwrap();
+        let new_top = top * 3;
+        assert!(proc.pub_push(Object::Unsigned(new_top)));
+    }
+
+    let ins = vec![
+        Instruction::LiteralUnsigned(13),
+        Instruction::LiteralUnsigned(0),
+        Instruction::Intrinsic,
+    ];
+
+    let intrinsics: &[fn(&mut Process)] = &[
+        triple_top
+    ];
+
+    let mut x = Process::new_with_intrinsics(&ins, &intrinsics[..]);
+
+    let ret = x.run(64);
+
+    assert_eq!(x.stack(), &*vec![Object::Unsigned(39)]);
+    assert_eq!(ret, Err(HaltReason::OutOfBounds))
+}
+
+#[test]
 fn stack_underflow() {
     let ins = vec![
         Instruction::AddUnsigned,
@@ -284,4 +334,14 @@ fn cycle_limit() {
     ]).run(64);
 
     assert_eq!(reason, Err(HaltReason::CycleLimit))
+}
+
+#[test]
+fn invalid_intrinsic() {
+    let reason = Process::new(&vec![
+        Instruction::LiteralUnsigned(0),
+        Instruction::Intrinsic,
+    ]).run(64);
+
+    assert_eq!(reason, Err(HaltReason::InvalidIntrinsic))
 }
