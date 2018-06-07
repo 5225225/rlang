@@ -4,4 +4,12 @@ version = "0.1.0"
 authors = ["5225225 <5225225@users.noreply.github.com>"]
 
 [dependencies]
-failure = "0.1.1"
+heapless = "0.3.6"
+
+[dependencies.failure]
+version = "0.1.1"
+default-features = false
+
+[dependencies.failure_derive]
+version = "0.1.1"
+default-features = false

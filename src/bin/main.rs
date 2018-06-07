@@ -1,5 +1,3 @@
-use std::mem;
-
 extern crate rlang;
 use rlang::*;
 
@@ -37,7 +35,7 @@ fn main() {
 
     ];
 
-    let mut x = Process::new(code);
+    let mut x = Process::new(&code);
 
     println!("{:?}", x.run(1024));
 

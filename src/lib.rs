@@ -1,11 +1,19 @@
 #![feature(try_from)]
 #![feature(try_trait)]
 #![feature(never_type)]
+#![feature(custom_attribute)]
+#![no_std]
 
-#[macro_use] extern crate failure;
+extern crate failure;
+#[macro_use] extern crate failure_derive;
 
-use std::convert::TryFrom;
-use std::convert::TryInto;
+extern crate heapless;
+
+use heapless::Vec;
+use heapless::consts::*;
+
+use core::convert::TryFrom;
+use core::convert::TryInto;
 
 #[derive(Fail, Debug)]
 #[fail(display = "Type Mismatch")]
@@ -129,18 +137,20 @@ pub enum HaltReason {
     OutOfBounds,
     #[fail(display = "Stack Underflow")]
     StackUnderflow,
+    #[fail(display = "Stack Overflow")]
+    StackOverflow,
     #[fail(display = "Read Uninitialised Scratch Register")]
     EmptyScratch,
     #[fail(display = "Type error")]
     TypeError,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Process {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Process<'a> {
     ip: usize,
-    stack: Vec<Object>,
-    callstack: Vec<usize>,
-    code: Vec<Instruction>,
+    stack: Vec<Object, U32>,
+    callstack: Vec<usize, U32>,
+    code: &'a [Instruction],
     scratch: [Option<Object>; 4]
 }
 
@@ -159,8 +169,8 @@ impl From<PopFail> for HaltReason {
     }
 }
 
-impl Process {
-    pub fn new(code: Vec<Instruction>) -> Process {
+impl<'a> Process<'a> {
+    pub fn new(code: &'a [Instruction]) -> Process {
         Process {
             ip: 0,
             stack: Vec::new(),
@@ -177,7 +187,7 @@ impl Process {
         Err(HaltReason::CycleLimit)
     }
 
-    pub fn stack(&self) -> &Vec<Object> {
+    pub fn stack(&'a self) -> &'a [Object] {
         &self.stack
     }
 
@@ -189,7 +199,7 @@ impl Process {
     }
 
     fn pop_as<T>(&mut self) -> Result<T, PopFail>
-        where T: std::convert::TryFrom<Object> {
+        where T: core::convert::TryFrom<Object> {
         match self.stack.pop() {
             None => Err(PopFail::StackUnderflow),
             Some(x) => {
@@ -204,13 +214,13 @@ impl Process {
     }
 
     fn pop2_as<T>(&mut self) -> Result<(T, T), PopFail>
-        where T: std::convert::TryFrom<Object> {
+        where T: core::convert::TryFrom<Object> {
         Ok((self.pop_as()?, self.pop_as()?))
     }
 
     #[allow(dead_code)]
     fn pop3_as<T>(&mut self) -> Result<(T, T, T), PopFail>
-        where T: std::convert::TryFrom<Object> {
+        where T: core::convert::TryFrom<Object> {
         Ok((self.pop_as()?, self.pop_as()?, self.pop_as()?))
     }
 
@@ -224,147 +234,258 @@ impl Process {
             None => return Err(HaltReason::OutOfBounds),
         };
 
-        println!("{}: {:?}: {:?}: {:?}", self.ip, instruction, self.stack, self.scratch);
+//        println!("{}: {:?}: {:?}: {:?}", self.ip, instruction, self.stack, self.scratch);
 
         match instruction {
-            LiteralUnsigned(x) => self.stack.push(Object::Unsigned(x)),
-            LiteralSigned(x) => self.stack.push(Object::Signed(x)),
-            LiteralBool(x) => self.stack.push(Object::Bool(x)),
+            LiteralUnsigned(x) => match self.stack.push(Object::Unsigned(x)) {
+                Ok(()) => {},
+                Err(_) => return Err(HaltReason::StackOverflow),
+            },
+            LiteralSigned(x) => match self.stack.push(Object::Signed(x)) {
+                Ok(()) => {},
+                Err(_) => return Err(HaltReason::StackOverflow),
+            },
+            LiteralBool(x) => match self.stack.push(Object::Bool(x)) {
+                Ok(()) => {},
+                Err(_) => return Err(HaltReason::StackOverflow),
+            },
             AddUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x + y));
+                match self.stack.push(Object::Unsigned(x + y)) {
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             SubtractUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x - y));
+                match self.stack.push(Object::Unsigned(x - y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             MultiplyUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x * y));
+                match self.stack.push(Object::Unsigned(x * y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             DivideUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x / y));
+                match self.stack.push(Object::Unsigned(x / y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             ModulusUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x % y));
+                match self.stack.push(Object::Unsigned(x % y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             AddSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Signed(x + y));
+                match self.stack.push(Object::Signed(x + y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             SubtractSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Signed(x - y));
+                match self.stack.push(Object::Signed(x - y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             MultiplySigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Signed(x * y));
+                match self.stack.push(Object::Signed(x * y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             DivideSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Signed(x / y));
+                match self.stack.push(Object::Signed(x / y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             ModulusSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Signed(x % y));
+                match self.stack.push(Object::Signed(x % y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             },
             BitAnd => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x & y));
+                match self.stack.push(Object::Unsigned(x & y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitOr => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x | y));
+                match self.stack.push(Object::Unsigned(x | y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitXor => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x ^ y));
+                match self.stack.push(Object::Unsigned(x ^ y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitNot => {
                 let x = self.pop_as::<u64>()?;
-                self.stack.push(Object::Unsigned(!x));
+                match self.stack.push(Object::Unsigned(!x)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitLShift => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x << y));
+                match self.stack.push(Object::Unsigned(x << y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitRShift => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x >> y));
+                match self.stack.push(Object::Unsigned(x >> y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitLRot => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x.rotate_left(y as u32)));
+                match self.stack.push(Object::Unsigned(x.rotate_left(y as u32))){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             BitRRot => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Unsigned(x.rotate_right(y as u32)));
+                match self.stack.push(Object::Unsigned(x.rotate_right(y as u32))){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LogAnd => {
                 let (y, x) = self.pop2_as::<bool>()?;
-                self.stack.push(Object::Bool(x & y));
+                match self.stack.push(Object::Bool(x & y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LogOr => {
                 let (y, x) = self.pop2_as::<bool>()?;
-                self.stack.push(Object::Bool(x | y));
+                match self.stack.push(Object::Bool(x | y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LogNot => {
                 let x = self.pop_as::<bool>()?;
-                self.stack.push(Object::Bool(!x));
+                match self.stack.push(Object::Bool(!x)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LogXor => {
                 let (y, x) = self.pop2_as::<bool>()?;
-                self.stack.push(Object::Bool(x ^ y));
+                match self.stack.push(Object::Bool(x ^ y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             EqUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x == y));
+                match self.stack.push(Object::Bool(x == y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             NeqUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x != y));
+                match self.stack.push(Object::Bool(x != y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             GtUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x > y));
+                match self.stack.push(Object::Bool(x > y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LtUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x < y));
+                match self.stack.push(Object::Bool(x < y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             GtEqUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x >= y));
+                match self.stack.push(Object::Bool(x >= y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LtEqUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
-                self.stack.push(Object::Bool(x <= y));
+                match self.stack.push(Object::Bool(x <= y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             EqSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x == y));
+                match self.stack.push(Object::Bool(x == y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             NeqSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x != y));
+                match self.stack.push(Object::Bool(x != y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             GtSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x > y));
+                match self.stack.push(Object::Bool(x > y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LtSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x < y));
+                match self.stack.push(Object::Bool(x < y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             GtEqSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x >= y));
+                match self.stack.push(Object::Bool(x >= y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             LtEqSigned => {
                 let (y, x) = self.pop2_as::<i64>()?;
-                self.stack.push(Object::Bool(x <= y));
+                match self.stack.push(Object::Bool(x <= y)){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             Branch => {
                 let x = self.pop_as::<u64>()?;
@@ -381,7 +502,10 @@ impl Process {
                 }
             }
             Call => {
-                self.callstack.push(self.ip);
+                match self.callstack.push(self.ip){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
                 let x = self.pop_as::<u64>()?;
                 self.ip = x as usize;
                 return Ok(());
@@ -413,7 +537,10 @@ impl Process {
                     None => return Err(HaltReason::EmptyScratch)
                 };
                 
-                self.stack.push(obj);
+                match self.stack.push(obj){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             PopSlot2 => {
                 let obj = match self.scratch[1] {
@@ -421,7 +548,10 @@ impl Process {
                     None => return Err(HaltReason::EmptyScratch)
                 };
                 
-                self.stack.push(obj);
+                match self.stack.push(obj){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             PopSlot3 => {
                 let obj = match self.scratch[2] {
@@ -429,7 +559,10 @@ impl Process {
                     None => return Err(HaltReason::EmptyScratch)
                 };
                 
-                self.stack.push(obj);
+                match self.stack.push(obj){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             PopSlot4 => {
                 let obj = match self.scratch[3] {
@@ -437,7 +570,10 @@ impl Process {
                     None => return Err(HaltReason::EmptyScratch)
                 };
                 
-                self.stack.push(obj);
+                match self.stack.push(obj){
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
         }
         self.ip += 1;
