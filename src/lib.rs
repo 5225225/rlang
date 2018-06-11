@@ -149,10 +149,14 @@ pub enum HaltReason {
     InvalidIntrinsic,
 }
 
+pub struct StackFrame {
+    ip: usize
+}
+
 pub struct Process<'a> {
     ip: usize,
     stack: Vec<Object, U32>,
-    callstack: Vec<usize, U32>,
+    callstack: Vec<StackFrame, U32>,
     code: &'a [Instruction],
     scratch: [Option<Object>; 4],
     intrinsics: &'a [fn(&mut Process)]
@@ -540,7 +544,10 @@ impl<'a> Process<'a> {
                 }
             }
             Call => {
-                match self.callstack.push(self.ip){
+                let sf = StackFrame {
+                    ip: self.ip
+                };
+                match self.callstack.push(sf){
                     Ok(()) => {},
                     Err(_) => return Err(HaltReason::StackOverflow),
                 };
@@ -549,12 +556,12 @@ impl<'a> Process<'a> {
                 return Ok(());
             }
             Ret => {
-                let ip = match self.callstack.pop() {
-                    Some(ip) => ip,
+                let stackFrame = match self.callstack.pop() {
+                    Some(sf) => sf,
                     None => return Err(HaltReason::StackUnderflow),
                 };
 
-                self.ip = ip;
+                self.ip = stackFrame.ip;
                 // Don't return here, we want to increment the instruction pointer.
             }
             PushSlot1 => {
