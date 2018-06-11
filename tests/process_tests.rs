@@ -1,3 +1,5 @@
+use std::mem;
+
 extern crate rlang;
 use rlang::*;
 
@@ -256,7 +258,7 @@ fn simple_intrinsic() {
         expected_panic
     ];
 
-    let mut x = Process::new_with_intrinsics(&ins, &intrinsics[..]);
+    let mut x = ProcessBuilder::new(&ins).intrinsics(&intrinsics[..]).build();
 
     let ret = x.run(64);
 
@@ -281,7 +283,7 @@ fn intrinsic_mutation() {
         triple_top
     ];
 
-    let mut x = Process::new_with_intrinsics(&ins, &intrinsics[..]);
+    let mut x = ProcessBuilder::new(&ins).intrinsics(&intrinsics[..]).build();
 
     let ret = x.run(64);
 

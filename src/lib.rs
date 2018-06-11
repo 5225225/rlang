@@ -177,6 +177,36 @@ impl From<PopFail> for HaltReason {
     }
 }
 
+pub struct ProcessBuilder<'a> {
+    code: &'a [Instruction],
+    intrinsics: &'a [fn(&mut Process)]
+}
+
+impl<'a> ProcessBuilder<'a> {
+    pub fn new(code: &'a [Instruction]) -> ProcessBuilder {
+        ProcessBuilder {
+            code,
+            intrinsics: &[],
+        }
+    }
+
+    pub fn intrinsics(&mut self, intrinsics: &'a [fn(&mut Process)]) -> &mut Self {
+        self.intrinsics = intrinsics;
+        self
+    }
+
+    pub fn build(&self) -> Process<'a> {
+        Process {
+            ip: 0,
+            stack: Vec::new(),
+            callstack: Vec::new(),
+            code: self.code,
+            intrinsics: self.intrinsics,
+            scratch: [None;4]
+        }
+    }
+}
+
 impl<'a> Process<'a> {
     pub fn new(code: &'a [Instruction]) -> Process<'a> {
         Process {
@@ -185,17 +215,6 @@ impl<'a> Process<'a> {
             callstack: Vec::new(),
             code: code,
             intrinsics: &[],
-            scratch: [None;4]
-        }
-    }
-
-    pub fn new_with_intrinsics(code: &'a [Instruction], intrinsics: &'a [fn(&mut Process)]) -> Process<'a> {
-        Process {
-            ip: 0,
-            stack: Vec::new(),
-            callstack: Vec::new(),
-            code: code,
-            intrinsics: intrinsics,
             scratch: [None;4]
         }
     }
