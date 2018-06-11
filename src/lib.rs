@@ -61,8 +61,8 @@ impl TryFrom<Object> for bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instruction {
-    LiteralUnsigned(u64),
-    LiteralSigned(i64),
+    LiteralUnsigned(u16),
+    LiteralSigned(i16),
     LiteralBool(bool),
 
     AddUnsigned,
@@ -279,11 +279,11 @@ impl<'a> Process<'a> {
 //        println!("{}: {:?}: {:?}: {:?}", self.ip, instruction, self.stack, self.scratch);
 
         match instruction {
-            LiteralUnsigned(x) => match self.stack.push(Object::Unsigned(x)) {
+            LiteralUnsigned(x) => match self.stack.push(Object::Unsigned(x.into())) {
                 Ok(()) => {},
                 Err(_) => return Err(HaltReason::StackOverflow),
             },
-            LiteralSigned(x) => match self.stack.push(Object::Signed(x)) {
+            LiteralSigned(x) => match self.stack.push(Object::Signed(x.into())) {
                 Ok(()) => {},
                 Err(_) => return Err(HaltReason::StackOverflow),
             },
