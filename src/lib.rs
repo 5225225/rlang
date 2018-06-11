@@ -64,6 +64,7 @@ pub enum Instruction {
     LiteralUnsigned(u16),
     LiteralSigned(i16),
     LiteralBool(bool),
+    LiteralIndexed(u16),
 
     AddUnsigned,
     SubtractUnsigned,
@@ -147,6 +148,8 @@ pub enum HaltReason {
     TypeError,
     #[fail(display = "Invalid Intrinsic")]
     InvalidIntrinsic,
+    #[fail(display = "Invalid Literal")]
+    InvalidLiteral,
 }
 
 pub struct StackFrame {
@@ -159,7 +162,8 @@ pub struct Process<'a> {
     callstack: Vec<StackFrame, U32>,
     code: &'a [Instruction],
     scratch: [Option<Object>; 4],
-    intrinsics: &'a [fn(&mut Process)]
+    intrinsics: &'a [fn(&mut Process)],
+    literals: &'a [Object],
 }
 
 impl From<StackUnderflow> for HaltReason {
@@ -179,7 +183,8 @@ impl From<PopFail> for HaltReason {
 
 pub struct ProcessBuilder<'a> {
     code: &'a [Instruction],
-    intrinsics: &'a [fn(&mut Process)]
+    intrinsics: &'a [fn(&mut Process)],
+    literals: &'a [Object],
 }
 
 impl<'a> ProcessBuilder<'a> {
@@ -187,11 +192,17 @@ impl<'a> ProcessBuilder<'a> {
         ProcessBuilder {
             code,
             intrinsics: &[],
+            literals: &[],
         }
     }
 
     pub fn intrinsics(&mut self, intrinsics: &'a [fn(&mut Process)]) -> &mut Self {
         self.intrinsics = intrinsics;
+        self
+    }
+
+    pub fn literals(&mut self, literals: &'a [Object]) -> &mut Self {
+        self.literals = literals;
         self
     }
 
@@ -202,7 +213,8 @@ impl<'a> ProcessBuilder<'a> {
             callstack: Vec::new(),
             code: self.code,
             intrinsics: self.intrinsics,
-            scratch: [None;4]
+            scratch: [None;4],
+            literals: self.literals,
         }
     }
 }
@@ -215,7 +227,8 @@ impl<'a> Process<'a> {
             callstack: Vec::new(),
             code: code,
             intrinsics: &[],
-            scratch: [None;4]
+            scratch: [None;4],
+            literals: &[],
         }
     }
 
@@ -310,6 +323,14 @@ impl<'a> Process<'a> {
                 Ok(()) => {},
                 Err(_) => return Err(HaltReason::StackOverflow),
             },
+            LiteralIndexed(x) => {
+                let literal = match self.literals.get(x as usize) {
+                    Some(f) => f,
+                    None => return Err(HaltReason::InvalidLiteral),
+                };
+
+                self.stack.push(*literal);
+            }
             AddUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
                 match self.stack.push(Object::Unsigned(x + y)) {

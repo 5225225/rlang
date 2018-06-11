@@ -292,6 +292,24 @@ fn intrinsic_mutation() {
 }
 
 #[test]
+fn push_indexed_literal() {
+    let ins = vec![
+        Instruction::LiteralIndexed(0),
+    ];
+    
+    let literals = vec![
+        Object::Unsigned(50),
+    ];
+
+    let mut x = ProcessBuilder::new(&ins).literals(&literals[..]).build();
+
+    let ret = x.run(64);
+
+    assert_eq!(x.stack(), &*vec![Object::Unsigned(50)]);
+    assert_eq!(ret, Err(HaltReason::OutOfBounds))
+}
+
+#[test]
 fn stack_underflow() {
     let ins = vec![
         Instruction::AddUnsigned,
@@ -346,4 +364,13 @@ fn invalid_intrinsic() {
     ]).run(64);
 
     assert_eq!(reason, Err(HaltReason::InvalidIntrinsic))
+}
+
+#[test]
+fn invalid_literal() {
+    let reason = Process::new(&vec![
+        Instruction::LiteralIndexed(0),
+    ]).run(64);
+
+    assert_eq!(reason, Err(HaltReason::InvalidLiteral))
 }
