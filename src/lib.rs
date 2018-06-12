@@ -29,7 +29,7 @@ pub enum Object {
 impl TryFrom<Object> for u64 {
     type Error = TypeMismatchError;
     
-    fn try_from(value: Object) -> Result<u64, TypeMismatchError> {
+    fn try_from(value: Object) -> Result<Self, TypeMismatchError> {
         match value {
             Object::Unsigned(x) => Ok(x),
             _ => Err(TypeMismatchError{}),
@@ -40,7 +40,7 @@ impl TryFrom<Object> for u64 {
 impl TryFrom<Object> for i64 {
     type Error = TypeMismatchError;
     
-    fn try_from(value: Object) -> Result<i64, TypeMismatchError> {
+    fn try_from(value: Object) -> Result<Self, TypeMismatchError> {
         match value {
             Object::Signed(x) => Ok(x),
             _ => Err(TypeMismatchError{}),
@@ -51,7 +51,7 @@ impl TryFrom<Object> for i64 {
 impl TryFrom<Object> for bool {
     type Error = TypeMismatchError;
     
-    fn try_from(value: Object) -> Result<bool, TypeMismatchError> {
+    fn try_from(value: Object) -> Result<Self, TypeMismatchError> {
         match value {
             Object::Bool(x) => Ok(x),
             _ => Err(TypeMismatchError{}),
@@ -167,13 +167,13 @@ pub struct Process<'a> {
 }
 
 impl From<StackUnderflow> for HaltReason {
-    fn from(_x: StackUnderflow) -> HaltReason {
+    fn from(_x: StackUnderflow) -> Self {
         HaltReason::StackUnderflow
     }
 }
 
 impl From<PopFail> for HaltReason {
-    fn from(x: PopFail) -> HaltReason {
+    fn from(x: PopFail) -> Self {
         match x {
             PopFail::StackUnderflow => HaltReason::StackUnderflow,
             PopFail::TypeError => HaltReason::TypeError,
@@ -225,7 +225,7 @@ impl<'a> Process<'a> {
             ip: 0,
             stack: Vec::new(),
             callstack: Vec::new(),
-            code: code,
+            code,
             intrinsics: &[],
             scratch: [None;4],
             literals: &[],
@@ -268,7 +268,7 @@ impl<'a> Process<'a> {
     pub fn pub_push(&mut self, value: Object) -> bool {
         match self.stack.push(value) {
             Ok(()) => true,
-            Err(val) => false
+            Err(_) => false
         }
     }
 
@@ -329,7 +329,10 @@ impl<'a> Process<'a> {
                     None => return Err(HaltReason::InvalidLiteral),
                 };
 
-                self.stack.push(*literal);
+                match self.stack.push(*literal) {
+                    Ok(()) => {},
+                    Err(_) => return Err(HaltReason::StackOverflow),
+                };
             }
             AddUnsigned => {
                 let (y, x) = self.pop2_as::<u64>()?;
@@ -596,12 +599,12 @@ impl<'a> Process<'a> {
                 return Ok(());
             }
             Ret => {
-                let stackFrame = match self.callstack.pop() {
+                let stack_frame = match self.callstack.pop() {
                     Some(sf) => sf,
                     None => return Err(HaltReason::StackUnderflow),
                 };
 
-                self.ip = stackFrame.ip;
+                self.ip = stack_frame.ip;
                 // Don't return here, we want to increment the instruction pointer.
             }
             PushSlot1 => {
