@@ -68,11 +68,11 @@ fn intrinsic(b: &mut Bencher) {
             nop
         ];
 
-        let mut x = Process::new_with_intrinsics(&instructions, &intrinsics);
+//        let mut x = Process::new_with_intrinsics(&instructions, &intrinsics);
 
-        let r = x.run(100_000);
+//        let r = x.run(100_000);
 
-        black_box(r);
-        black_box(x);
+//        black_box(r);
+//        black_box(x);
     });
 }
